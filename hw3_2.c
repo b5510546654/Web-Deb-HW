@@ -1,96 +1,94 @@
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <pthread.h>
+
 #define N 100000
 
 void swap(int *xp, int *yp) {
-	int temp = *xp;
-	*xp = *yp;
-	*yp = temp;
+  int temp = *xp;
+  *xp = *yp;
+  *yp = temp;
 }
+
+// A function to implement bubble sort
 void bubbleSort(int arr[], int n) {
-	int i, j;
-	for (i = 0; i < n-1; i++)
-		for (j = 0; j < n-i-1; j++)
-	  		if (arr[j] > arr[j+1])
+  int i, j;
+  for (i = 0; i < n-1; i++)      
+    for (j = 0; j < n-i-1; j++)
+      if (arr[j] > arr[j+1])
 	swap(&arr[j], &arr[j+1]);
 }
+
+int isSorted(int *a, int size) {
+  int i;
+  for (i = 0; i < size - 1; i++) {
+    if (a[i] > a[i + 1]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+// Function to print an array
 void printArray(int arr[], int size)
 {
- int i;
- for (i=0; i < size; i++)
- printf("%d ", arr[i]);
- printf("\n");
-}
-
-void *firstHalf(void *arg) {
-  int *A = (int *) arg;
-  bubbleSort(&A[0], N/2);
-  pthread_exit(0);
-}
-
-void *secondHalf(void *arg) {
-  int *A = (int *) arg;
-  bubbleSort(&A[N/2], N/2);
-  pthread_exit(0);
+  int i;
+  for (i=0; i < size; i++)
+    printf("%d ", arr[i]);
+  printf("\n");
 }
 
 
-int main() {
- int i, n;
- int* A;
- clock_t start, end;
- double elapsed_time;
+int main(int argc, char** argv) {
+	int i, n;
+  int* A;
+	int* buffer;
+	clock_t start, end;
+	double elapsed_time, t1, t2;
 
- A = (int *)malloc(sizeof(int)*N);
- if (A == NULL) { 
- printf("Fail to malloc\n");
- exit(0);
- }
- for (i=N-1; i>=0; i--)
-A[N-1-i] = i;
- start = clock() ;
- // bubbleSort(&A[0], N/2);
- // bubbleSort(&A[N/2], N/2);
- pthread_t t1, t2;
- pthread_create(&t1, NULL, &firstHalf, A);
- pthread_create(&t2, NULL, &secondHalf, A);
+	MPI_Init(NULL, NULL);
 
- pthread_join(t1, NULL);
- pthread_join(t2, NULL);
+  int world_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  int world_size;
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
- // printArray(&A[0],N);
- printf("Merge!!!\n");
 
-int* temp;
-temp = (int *)malloc(sizeof(int)*N);
-int x = 0;
-int y = N/2;
-for(int c = 0; c < N ; c++){
-	// printf("%d %d\n",A[x],A[y]);
-	if(A[x] < A[y] || y >= N ){
-		temp[c] = A[x];
-		x++;
-	}
-	else{
-		temp[c] = A[y];
-		y++;
-	}
+	t1 = MPI_Wtime();
+  A = (int *)malloc(sizeof(int)*N);
+	buffer = (int *)malloc(sizeof(int)*N);
+  if (A == NULL || buffer == NULL) {
+    printf("Fail to malloc\n");
+    exit(0);
+  }
+  for (i=N-1; i>=0; i--){
+    A[N-1-i] = i;
+  }
+  int splitted_size = (N / world_size);
+  int from = ((splitted_size * world_rank) + 1) - 1;
+  int to = (splitted_size * (world_rank + 1)) - 1;
+
+  bubbleSort(&A[from], splitted_size);
+
+  if (world_rank != 0) {
+    MPI_Send(&A[from], splitted_size, MPI_INT, 0, 0, MPI_COMM_WORLD);
+  } else {
+    
+    for (int i = 1; i < world_size; i++) {
+      MPI_Recv(buffer, splitted_size, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+      int start_at = ((splitted_size * i) + 1) - 1;
+      for (int k = start_at, l = 0; k < start_at + splitted_size; k++, l++) {
+        A[k] = buffer[l];
+      }
+    }
+
+    printArray(&A[0], N);
+     
+    t2 = MPI_Wtime();
+    printf( "Elapsed time MPI_Wtime is %f\n", t2 - t1 ); 
+  } 
+	MPI_Finalize();
+	return 0;
 }
-
-
- // bubbleSort(A, N);
- end = clock();
- // print the last ten elements
- // printArray(&A[N-10], 10);
- // printf("%d",N);
- printArray(&temp[N-10], 10);
-  // printArray(&temp[0],N);
- elapsed_time = (end-start)/(double)CLOCKS_PER_SEC;
- printf("elapsed time = %lf\n", elapsed_time);
- return 0;
-}
-
-
-
